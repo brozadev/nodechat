@@ -1,0 +1,54 @@
+String fullPath = request.getFileName();
+
+System.out.println("SMBJ SMBClient.. " + SMB2SERVER);
+SmbConfig config = SmbConfig.builder().build();
+
+SMBClient client = new SMBClient(config);
+
+String SHARE_NAME = "distportal";
+
+try (Connection connection = client.connect(SMB2SERVER)) {
+System.out.println("SMBJ Connection starting.. ");
+AuthenticationContext ac = new AuthenticationContext(sambaUsername, sambaPassword.toCharArray(), null);
+Session session = connection.authenticate(ac);
+
+// Connect to Share
+DiskShare share = (DiskShare) session.connectShare(SHARE_NAME);
+
+// this is com.hierynomus.smbj.share.File !
+File remoteFile = null;
+
+// I am creating file with flag FILE_CREATE, which will throw if file exists already
+System.out.println("file exists ? " + share.fileExists(fullPath));
+if (share.fileExists(fullPath)) {
+	System.out.println("opening share file.. " + fullPath);
+	remoteFile = share.openFile(fullPath,
+			new HashSet<>(Arrays.asList(AccessMask.GENERIC_ALL)),
+			new HashSet<>(Arrays.asList(FileAttributes.FILE_ATTRIBUTE_NORMAL)),
+			SMB2ShareAccess.ALL,
+			SMB2CreateDisposition.FILE_OPEN,
+			new HashSet<>(Arrays.asList(SMB2CreateOptions.FILE_DIRECTORY_FILE))
+	);
+}
+
+System.out.println("fl null ? " + remoteFile == null);
+
+if (remoteFile == null) {
+	logger.info("File in samba is empty !!!");
+	return null;
+}
+
+//                    InputStream inputStreamFromLan = remoteFile.getInputStream();
+byte[] inputStreamFromLan = IOUtils.toByteArray(remoteFile.getInputStream());
+String mimeType = MimeCustomLibs.getMimeTypeFromFileName(request.getFileName());
+
+logger.info("mimeType : " + mimeType);
+logger.info("================= finish samba download");
+
+return ResponseEntity.ok()
+		.contentType(MediaType.parseMediaType(mimeType))
+		.body(new ByteArrayResource(inputStreamFromLan));
+} catch (Exception e) {
+e.printStackTrace();
+return ResponseEntity.badRequest().contentType(null).body(null);
+}
